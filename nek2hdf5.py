@@ -63,10 +63,37 @@ def readnek(fname, dtype="float64"):
     fData = np.zeros((numElems, 8, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
 
     # read geometry
-    for iel in elmap:
-        el = fData[iel - 1, 0:3, ...]
-        for idim in range(3):
-            el[idim, ...] = read_file_into_data()
+    if varList[0] == 'X':
+        for iel in elmap:
+            el = fData[iel - 1, 0:3, ...]
+            for idim in range(3):
+                el[idim, ...] = read_file_into_data()
+    else:
+        # Read grid data from file
+        try:
+            gfName = sys.argv[2]
+            g = open(gfName, 'rb')
+        except:
+            print("Please specify grid file :(\n")
+            exit()
+
+        g.read(136)
+        gelMap = g.read(4 * numElems)
+        gelMap = struct.unpack(emode + numElems * "i", gelMap)
+        gelMap = np.array(gelMap, dtype=np.int32)
+        if gelMap[0] != elmap[0]:
+            print("Grid file is incompatible :(\n")
+            exit()
+
+        for iel in elmap:
+            el = fData[iel - 1, 0:3, ...]
+            for idim in range(3):
+                fi = g.read(bytes_elem)
+                fi = np.frombuffer(fi, dtype=emode + rType, count=ptsPerElem)
+                elem_shape = polyOrder[::-1]  # lz, ly, lx
+                el[idim, ...] = fi.reshape(elem_shape)
+
+        g.close()
 
     # read velocity
     for iel in elmap:
@@ -88,6 +115,10 @@ def readnek(fname, dtype="float64"):
     infile.close()
 
     print("Transferring data to 3D arrays")
+
+    if (nelx*nely*nelz != numElems):
+        print("ERROR: Element count is inconsistent")
+        exit(0)
 
     Nx = nelx*(polyOrder[0] - 1) + 1
     Ny = nely*(polyOrder[1] - 1) + 1
@@ -153,7 +184,7 @@ def readnek(fname, dtype="float64"):
         writey = False
 
     # output
-    return xPos, yPos, zPos, xVel, yVel, zVel, prsr, tmpr
+    return xPos, yPos, zPos, xVel, yVel, zVel, prsr, tmpr, solTime
 
 
 if __name__ == "__main__":
@@ -164,9 +195,14 @@ if __name__ == "__main__":
         print("Could not read file :(\n")
         exit()
 
-    x, y, z, u, v, w, p, t = readnek(fName)
+    x, y, z, u, v, w, p, t, tVal = readnek(fName)
 
-    h5fName = fName + ".h5"
+    try:
+        outDest = sys.argv[3]
+        h5fName = outDest + ".h5"
+    except:
+        h5fName = fName + ".h5"
+
     print("Writing output file: ", h5fName)
 
     f = hp.File(h5fName, "w")
@@ -179,6 +215,9 @@ if __name__ == "__main__":
     dset = f.create_dataset("W", data = w)
     dset = f.create_dataset("P", data = p)
     dset = f.create_dataset("T", data = t)
+
+    dset = f.create_dataset("Time", data = tVal)
+    dset = f.create_dataset("nelm", data = np.array([nelx, nely, nelz]))
 
     f.close()
 
