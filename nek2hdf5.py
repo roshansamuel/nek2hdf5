@@ -3,6 +3,9 @@ import struct
 import h5py as hp
 import numpy as np
 
+# For debug
+import tracemalloc
+
 nelx, nely, nelz = 100, 100, 64
 ddtype = "float64"
 
@@ -199,6 +202,8 @@ if __name__ == "__main__":
         print("Could not read file :(\n")
         exit()
 
+    tracemalloc.start()
+
     x, y, z, u, v, w, p, t, tVal = readnek(fName)
 
     try:
@@ -224,4 +229,9 @@ if __name__ == "__main__":
     dset = f.create_dataset("nelm", data = np.array([nelx, nely, nelz]))
 
     f.close()
+
+    cblocks, pblocks = tracemalloc.get_traced_memory()
+    maxmem = pblocks/(1024*1024)
+    print("Maximum memory used is: ", np.round(maxmem, 2), " MB")
+    tracemalloc.stop()
 
