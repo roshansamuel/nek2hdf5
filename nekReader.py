@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import io
-import re
 import struct
 import numpy as np
 import xarray as xr
@@ -16,26 +15,7 @@ from pymech import HexaData
 
 PathLike = Union[str, os.PathLike]
 
-'''
-nek_ext_pattern variable is taken from the pymech suite.
-It is a regular expression compiled to detect Nek files
-'''
-nek_ext_pattern = re.compile(
-    r"""
-   .*          # one or more characters
-   \.          # character "."
-   f           # character "f"
-   (\d{5}|ld)  # 5 digits or the characters "ld"
-""",
-    re.VERBOSE,
-)
 
-
-"""
-Dataclass for Nek5000 field file header. This relies on the package
-attrs_ and its ability to do type-validation and type-conversion of the
-header metadata.
-"""
 @define
 class Header:
     # get word size: single or double precision
@@ -54,9 +34,6 @@ class Header:
     fid: int = field(converter=int)
     # get tot number of files
     nb_files: int = field(converter=int)
-
-    # NOTE: field(factory=...) specifies the default value for the field.
-    # https://www.attrs.org/en/stable/init.html#defaults
 
     # get variables [XUPTS[01-99]]
     variables: str = field(factory=str)
@@ -134,56 +111,13 @@ class Header:
         variables = (str_vars[i] if nb_vars[i] > 0 else "" for i in range(5))
         return "".join(variables)
 
-    def as_bytestring(self) -> bytes:
-        header = "#std %1i %2i %2i %2i %10i %10i %20.13E %9i %6i %6i %s" % (
-            self.wdsz,
-            self.orders[0],
-            self.orders[1],
-            self.orders[2],
-            self.nb_elems,
-            self.nb_elems_file,
-            self.time,
-            self.istep,
-            self.fid,
-            self.nb_files,
-            self.variables,
-        )
-        return header.ljust(132).encode("utf-8")
 
-
-'''
-can_open_nek_dataset function is taken from the pymech suite.
-It is a regular expression check of the file extension.
-it will not match: .f90 .f .fort .f0000
-it will match: .fld .f00001 .f12345
-'''
-def can_open_nek_dataset(path):
-    return nek_ext_pattern.match(str(path))
-
-
-'''
-open_dataset function is taken from the pymech suite
-It is a helper function for opening a file as an :class:`xarray.Dataset`.
-Parameters
-----------
-path : str
-        Path to a field file (only Nek files are supported at the moment.)
-kwargs : dict
-        Keyword arguments passed on to the compatible open function.
-'''
 def open_dataset(path, **kwargs):
-    if can_open_nek_dataset(path):
-        _open = _open_nek_dataset
-    else:
-        raise NotImplementedError(f"Filetype: {Path(path).suffix} is not supported.")
+    _open = _open_nek_dataset
 
     return _open(path, **kwargs)
 
 
-'''
-_open_nek_dataset function is taken from the pymech suite.
-It is a interface for converting Nek field files into xarray_ datasets.
-'''
 def _open_nek_dataset(path, drop_variables=None):
     field = readnek(path)
     if isinstance(field, int):
@@ -232,7 +166,6 @@ class _NekDataStore(xr.backends.common.AbstractDataStore):
     def meshgrid_to_dim(self, mesh):
         """Reverse of np.meshgrid. This method extracts one-dimensional
         coordinates from a cubical array format for every direction
-
         """
         dim = np.unique(np.round(mesh, 8))
         return dim
@@ -282,33 +215,16 @@ class _NekDataStore(xr.backends.common.AbstractDataStore):
         return Frozen(data_vars)
 
 
-'''
-readnek function is taken from the pymech suite.
-It is a function for reading binary data from the nek5000 binary format.
-Parameters
-----------
-fname : str
-    File name
-dtype : str or type
-    Floating point data type. See also :class:`pymech.core.Elem`.
-skip_vars: tuple[str]
-    Variables to skip. Valid values to skip are ``("x", "y", "z", "ux",
-    "uy", "uz", "pressure", "temperature", "s01", "s02", ...)``.  It also
-    accept some extra values ``("vx", "vy", "vz", "p", "t")``.  If empty
-    (default), it reads all variables available in the file.
-'''
 def readnek(fname, dtype="float64", skip_vars=()):
     try:
         infile = open(fname, "rb")
     except OSError as e:
         print(f"I/O error ({e.errno}): {e.strerror}")
         return -1
-    #
+
     # ---------------------------------------------------------------------------
     # READ HEADER
     # ---------------------------------------------------------------------------
-    #
-    # read header
     h = read_header(infile)
     #
     # identify endian encoding
@@ -323,15 +239,14 @@ def readnek(fname, dtype="float64", skip_vars=()):
         emode = ">"
     else:
         return -3
-    #
+
     # read element map for the file
     elmap = infile.read(4 * h.nb_elems_file)
     elmap = struct.unpack(emode + h.nb_elems_file * "i", elmap)
-    #
+
     # ---------------------------------------------------------------------------
     # READ DATA
     # ---------------------------------------------------------------------------
-    #
     # initialize data structure
     data = HexaData(h.nb_dims, h.nb_elems, h.orders, h.nb_vars, 0, dtype)
     data.time = h.time
@@ -397,7 +312,6 @@ def readnek(fname, dtype="float64", skip_vars=()):
                     else:
                         read_file_into_data(el.vel, idim)
 
-    #
     # read pressure
     nb_vars = h.nb_vars[2]
     skip_condition = any({"p", "pressure"}.intersection(skip_vars))
@@ -410,7 +324,6 @@ def readnek(fname, dtype="float64", skip_vars=()):
                 for ivar in range(nb_vars):
                     read_file_into_data(el.pres, ivar)
 
-    #
     # read temperature
     nb_vars = h.nb_vars[3]
     skip_condition = any({"t", "temperature"}.intersection(skip_vars))
@@ -422,9 +335,8 @@ def readnek(fname, dtype="float64", skip_vars=()):
                 el = data.elem[iel - 1]
                 for ivar in range(nb_vars):
                     read_file_into_data(el.temp, ivar)
-    #
+
     # read scalar fields
-    #
     nb_vars = h.nb_vars[4]
     scalar_vars = tuple(f"s{i:02d}" for i in range(1, nb_vars + 1))
     skip_condition = tuple(scalar_vars[ivar] in skip_vars for ivar in range(nb_vars))
@@ -442,20 +354,14 @@ def readnek(fname, dtype="float64", skip_vars=()):
                     for iel in elmap:
                         el = data.elem[iel - 1]
                         read_file_into_data(el.scal, ivar)
-    #
-    #
+
     # close file
     infile.close()
-    #
+
     # output
     return data
 
 
-'''
-read_header function is taken from the pymech suite.
-It makes a :class:`pymech.neksuite.Header` instance from a file buffer
-opened in binary mode.
-'''
 def read_header(path_or_file_obj: Union[PathLike, BinaryIO]) -> Header:
     if isinstance(path_or_file_obj, (str, os.PathLike)):
         with Path(path_or_file_obj).open("rb") as fp:
@@ -473,12 +379,12 @@ def read_header(path_or_file_obj: Union[PathLike, BinaryIO]) -> Header:
     return Header(header[1], header[2:5], *header[5:12])  # type: ignore[arg-type]
 
 
-ds = open_dataset('rbc0.f00001')
-#x = 
+ds = open_dataset('rbc_16_p3.f00001')
 print(ds)
-exit()
 T = ds['temperature']
-plt.contourf(T[:, 64, :])
+x = ds['xmesh']
+z = ds['zmesh']
+plt.contourf(x[:, 64, :], z[:, 64, :], T[:, 64, :])
 plt.show()
 #ds.mean(['x', 'z']).ux.plot()
 #plt.show()
