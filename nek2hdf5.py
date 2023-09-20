@@ -3,9 +3,6 @@ import struct
 import h5py as hp
 import numpy as np
 
-# For debug
-import tracemalloc
-
 nelx, nely, nelz = 100, 100, 64
 ddtype = "float64"
 
@@ -26,7 +23,6 @@ def readnek(fname):
         h5fName = outDest + ".h5"
     except:
         h5fName = fName + ".h5"
-    print("Writing output file: ", h5fName)
 
     f = hp.File(h5fName, "w")
 
@@ -77,6 +73,7 @@ def readnek(fname):
     Ny = nely*(polyOrder[1] - 1) + 1
     Nz = nelz*(polyOrder[2] - 1) + 1
 
+    # Function to read data from one element
     def read_elem_into_data(ifile):
         """Read binary file into an array attribute of ``data.elem``"""
         fi = ifile.read(bytes_elem)
@@ -87,6 +84,7 @@ def readnek(fname):
 
         return data_var
 
+    # Function to read one scalar variable from file
     def read_file_into_data(ifile):
         fData = np.zeros((numElems, polyOrder[2], polyOrder[1], polyOrder[0]), dtype=ddtype)
 
@@ -98,6 +96,7 @@ def readnek(fname):
 
         return fData
 
+    # Function to read one vector variable from file
     def read_file_into_data_3c(ifile):
         fData = np.zeros((numElems, 3, polyOrder[2], polyOrder[1], polyOrder[0]), dtype=ddtype)
 
@@ -111,6 +110,7 @@ def readnek(fname):
 
         return fData
 
+    # Function to transfer scalar variable to 3D array
     def transfer_data(fData):
         oData = np.zeros((Nx, Ny, Nz), dtype=ddtype)
 
@@ -141,6 +141,7 @@ def readnek(fname):
 
         return oData
 
+    # Function to transfer one component of a vector variable to 3D array
     def transfer_data_3c(fData, cInd):
         oData = np.zeros((Nx, Ny, Nz), dtype=ddtype)
 
@@ -171,6 +172,7 @@ def readnek(fname):
 
         return oData
 
+    # Function to transfer x-grid to 1D array
     def transfer_xgrid(fData):
         xPos = np.zeros(Nx, dtype=ddtype)
 
@@ -188,6 +190,7 @@ def readnek(fname):
 
         return xPos
 
+    # Function to transfer y-grid to 1D array
     def transfer_ygrid(fData):
         yPos = np.zeros(Ny, dtype=ddtype)
 
@@ -205,6 +208,7 @@ def readnek(fname):
 
         return yPos
 
+    # Function to transfer z-grid to 1D array
     def transfer_zgrid(fData):
         zPos = np.zeros(Nz, dtype=ddtype)
 
@@ -223,6 +227,8 @@ def readnek(fname):
         return zPos
 
     # read geometry
+    print("Processing grid data")
+
     if varList[0] == 'X':
         # Read XYZ Data
         fData = read_file_into_data_3c(infile)
@@ -267,6 +273,7 @@ def readnek(fname):
         g.close()
 
     # Read Vx-Vy-Vz data
+    print("Processing velocity data")
     fData = read_file_into_data_3c(infile)
 
     # Transfer Vx data
@@ -282,11 +289,13 @@ def readnek(fname):
     dset = f.create_dataset("W", data = oData)
 
     # Read pressure
+    print("Processing pressure data")
     fData = read_file_into_data(infile)
     oData = transfer_data(fData)
     dset = f.create_dataset("P", data = oData)
 
     # Read temperature
+    print("Processing temperature data")
     fData = read_file_into_data(infile)
     oData = transfer_data(fData)
     dset = f.create_dataset("T", data = oData)
@@ -300,6 +309,8 @@ def readnek(fname):
 
     f.close()
 
+    print("Finished writing output file: ", h5fName)
+
 
 if __name__ == "__main__":
     try:
@@ -309,12 +320,5 @@ if __name__ == "__main__":
         print("Could not read file :(\n")
         exit()
 
-    tracemalloc.start()
-
     readnek(fName)
-
-    cblocks, pblocks = tracemalloc.get_traced_memory()
-    maxmem = pblocks/(1024*1024)
-    print("Maximum memory used is: ", np.round(maxmem, 2), " MB")
-    tracemalloc.stop()
 
