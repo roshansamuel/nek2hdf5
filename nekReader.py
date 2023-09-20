@@ -55,58 +55,60 @@ def readnek(fname, dtype="float64"):
 
         return data_var
 
+    fData = np.zeros((numElems, 8, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
+
     # read geometry
-    #pos = [np.zeros((3, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64") for i in range(numElems)]
-    pos = np.zeros((numElems, 3, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
+    #pos = np.zeros((numElems, 3, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
     for iel in elmap:
-        #el = pos[iel - 1]
-        el = pos[iel - 1, ...]
+        #el = pos[iel - 1, ...]
+        el = fData[iel - 1, 0:3, ...]
         for idim in range(3):
             el[idim, ...] = read_file_into_data()
 
     # read velocity
-    #vel = [np.zeros((3, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64") for i in range(numElems)]
-    vel = np.zeros((numElems, 3, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
+    #vel = np.zeros((numElems, 3, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
     for iel in elmap:
-        #el = vel[iel - 1]
-        el = vel[iel - 1, ...]
+        #el = vel[iel - 1, ...]
+        el = fData[iel - 1, 3:6, ...]
         for idim in range(3):
             el[idim, ...] = read_file_into_data()
 
     # read pressure
-    #prs = [np.zeros((1, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64") for i in range(numElems)]
-    prs = np.zeros((numElems, 1, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
+    #prs = np.zeros((numElems, 1, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
     for iel in elmap:
-        #el = prs[iel - 1]
-        el = prs[iel - 1, ...]
+        #el = prs[iel - 1, ...]
+        el = fData[iel - 1, 6, ...]
         el[...] = read_file_into_data()
 
     # read temperature
-    #tmp = [np.zeros((1, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64") for i in range(numElems)]
-    tmp = np.zeros((numElems, 1, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
+    #tmp = np.zeros((numElems, 1, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
     for iel in elmap:
-        #el = tmp[iel - 1]
-        el = tmp[iel - 1, ...]
+        #el = tmp[iel - 1, ...]
+        el = fData[iel - 1, 7, ...]
         el[...] = read_file_into_data()
 
     # close file
     infile.close()
 
-    pos = np.swapaxes(np.array(pos), 2, 4)
-    vel = np.swapaxes(np.array(vel), 2, 4)
-    prs = np.swapaxes(np.array(prs), 2, 4)
-    tmp = np.swapaxes(np.array(tmp), 2, 4)
+    fData = np.swapaxes(fData, 2, 4)
+    #pos = np.swapaxes(pos, 2, 4)
+    #vel = np.swapaxes(vel, 2, 4)
+    #prs = np.swapaxes(prs, 2, 4)
+    #tmp = np.swapaxes(tmp, 2, 4)
 
-    print(pos.shape)
-    print(vel.shape)
-    print(prs.shape)
-    print(tmp.shape)
-    print(vel[-1, 0, -1, -1, :])
-    print(vel[-100, 0, 0, -1, :])
+    print(fData.shape)
+    #print(pos.shape)
+    #print(vel.shape)
+    #print(prs.shape)
+    #print(tmp.shape)
+    print(fData[-1, 3, -1, -1, :])
+    print(fData[-100, 3, 0, -1, :])
+    #print(vel[-1, 0, -1, -1, :])
+    #print(vel[-100, 0, 0, -1, :])
     exit()
 
     # output
-    return np.array(pos)
+    return np.array(fData)
 
 
 if __name__ == "__main__":
