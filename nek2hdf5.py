@@ -13,15 +13,25 @@ def readnek(fname):
     global ddtype
     global nelx, nely, nelz
 
+    # Open input file
     try:
         infile = open(fname, "rb")
     except OSError as e:
         print(f"I/O error ({e.errno}): {e.strerror}")
         return -1
 
-    # ---------------------------------------------------------------------------
-    # READ HEADER
-    # ---------------------------------------------------------------------------
+    # Open output file
+    try:
+        outDest = sys.argv[3]
+        h5fName = outDest + ".h5"
+    except:
+        h5fName = fName + ".h5"
+    print("Writing output file: ", h5fName)
+
+    f = hp.File(h5fName, "w")
+
+    ############# READ HEADER #############
+
     headData = infile.read(132).split()
     precSize = int(headData[1])
     polyOrder = tuple([int(x) for x in headData[2:5]])
@@ -57,7 +67,17 @@ def readnek(fname):
 
     bytes_elem = ptsPerElem * precSize
 
-    def read_file_into_data():
+    if (nelx*nely*nelz != numElems):
+        print("ERROR: Element count is inconsistent")
+        exit(0)
+
+    ############# FINISHED HEADER - BEGIN DATA READ #############
+
+    Nx = nelx*(polyOrder[0] - 1) + 1
+    Ny = nely*(polyOrder[1] - 1) + 1
+    Nz = nelz*(polyOrder[2] - 1) + 1
+
+    def read_elem_into_data():
         """Read binary file into an array attribute of ``data.elem``"""
         fi = infile.read(bytes_elem)
         fi = np.frombuffer(fi, dtype=emode + rType, count=ptsPerElem)
@@ -67,14 +87,114 @@ def readnek(fname):
 
         return data_var
 
-    fData = np.zeros((numElems, 8, polyOrder[2], polyOrder[1], polyOrder[0]), dtype=ddtype)
+    def read_file_into_data():
+        fData = np.zeros((numElems, polyOrder[2], polyOrder[1], polyOrder[0]), dtype=ddtype)
+
+        for iel in elmap:
+            el = fData[iel - 1, ...]
+            el[...] = read_elem_into_data()
+
+        fData = np.swapaxes(fData, 1, 3)
+
+        return fData
+
+    def transfer_data(fData):
+        oData = np.zeros((Nx, Ny, Nz), dtype=ddtype)
+
+        for elz in range(nelz):
+            strz = elz * (polyOrder[2] - 1)
+            lenz = polyOrder[2] - 1
+            if elz == nelz - 1:
+                lenz = polyOrder[2]
+            endz = strz + lenz
+
+            for ely in range(nely):
+                stry = ely * (polyOrder[1] - 1)
+                leny = polyOrder[1] - 1
+                if ely == nely - 1:
+                    leny = polyOrder[1]
+                endy = stry + leny
+
+                for elx in range(nelx):
+                    elNum = nelx*nely*elz + nelx*ely + elx
+
+                    strx = elx * (polyOrder[0] - 1)
+                    lenx = polyOrder[0] - 1
+                    if elx == nelx - 1:
+                        lenx = polyOrder[0]
+                    endx = strx + lenx
+
+                    oData[strx:endx, stry:endy, strz:endz] = fData[elNum, :lenx, :leny, :lenz]
+
+        return oData
+
+    def transfer_xgrid(fData):
+        xPos = np.zeros(Nx, dtype=ddtype)
+
+        ely, elz = 1, 1
+        for elx in range(nelx):
+            elNum = nelx*nely*elz + nelx*ely + elx
+
+            strx = elx * (polyOrder[0] - 1)
+            lenx = polyOrder[0] - 1
+            if elx == nelx - 1:
+                lenx = polyOrder[0]
+            endx = strx + lenx
+
+            xPos[strx:endx] = fData[elNum, :lenx, 0, 0]
+
+        return xPos
+
+    def transfer_ygrid(fData):
+        yPos = np.zeros(Ny, dtype=ddtype)
+
+        elx, elz = 1, 1
+        for ely in range(nely):
+            elNum = nelx*nely*elz + nelx*ely + elx
+
+            stry = ely * (polyOrder[1] - 1)
+            leny = polyOrder[1] - 1
+            if ely == nely - 1:
+                leny = polyOrder[1]
+            endy = stry + leny
+
+            yPos[stry:endy] = fData[elNum, 0, :leny, 0]
+
+        return yPos
+
+    def transfer_zgrid(fData):
+        zPos = np.zeros(Nz, dtype=ddtype)
+
+        elx, ely = 1, 1
+        for elz in range(nelz):
+            elNum = nelx*nely*elz + nelx*ely + elx
+
+            strz = elz * (polyOrder[2] - 1)
+            lenz = polyOrder[2] - 1
+            if elz == nelz - 1:
+                lenz = polyOrder[2]
+            endz = strz + lenz
+
+            zPos[strz:endz] = fData[elNum, 0, 0, :lenz]
+
+        return zPos
 
     # read geometry
     if varList[0] == 'X':
-        for iel in elmap:
-            el = fData[iel - 1, 0:3, ...]
-            for idim in range(3):
-                el[idim, ...] = read_file_into_data()
+        # Read X Data
+        fData = read_file_into_data()
+        oData = transfer_xgrid(fData)
+        dset = f.create_dataset("X", data = oData)
+
+        # Read Y Data
+        fData = read_file_into_data()
+        oData = transfer_ygrid(fData)
+        dset = f.create_dataset("Y", data = oData)
+
+        # Read Z Data
+        fData = read_file_into_data()
+        oData = transfer_zgrid(fData)
+        dset = f.create_dataset("Z", data = oData)
     else:
         # Read grid data from file
         try:
@@ -102,96 +222,39 @@ def readnek(fname):
 
         g.close()
 
-    # read velocity
-    for iel in elmap:
-        el = fData[iel - 1, 3:6, ...]
-        for idim in range(3):
-            el[idim, ...] = read_file_into_data()
+    # Read Vx data
+    fData = read_file_into_data()
+    oData = transfer_data(fData)
+    dset = f.create_dataset("U", data = oData)
 
-    # read pressure
-    for iel in elmap:
-        el = fData[iel - 1, 6, ...]
-        el[...] = read_file_into_data()
+    # Read Vy data
+    fData = read_file_into_data()
+    oData = transfer_data(fData)
+    dset = f.create_dataset("V", data = oData)
 
-    # read temperature
-    for iel in elmap:
-        el = fData[iel - 1, 7, ...]
-        el[...] = read_file_into_data()
+    # Read Vz data
+    fData = read_file_into_data()
+    oData = transfer_data(fData)
+    dset = f.create_dataset("W", data = oData)
+
+    # Read pressure
+    fData = read_file_into_data()
+    oData = transfer_data(fData)
+    dset = f.create_dataset("P", data = oData)
+
+    # Read temperature
+    fData = read_file_into_data()
+    oData = transfer_data(fData)
+    dset = f.create_dataset("T", data = oData)
 
     # close file
     infile.close()
 
-    print("Transferring data to 3D arrays")
+    # Write final metadata
+    dset = f.create_dataset("Time", data = solTime)
+    dset = f.create_dataset("nelm", data = np.array([nelx, nely, nelz]))
 
-    if (nelx*nely*nelz != numElems):
-        print("ERROR: Element count is inconsistent")
-        exit(0)
-
-    Nx = nelx*(polyOrder[0] - 1) + 1
-    Ny = nely*(polyOrder[1] - 1) + 1
-    Nz = nelz*(polyOrder[2] - 1) + 1
-
-    # Swap x and z axes correctly
-    fData = np.swapaxes(fData, 2, 4)
-
-    # Bring all data to final axis
-    fData = np.swapaxes(np.swapaxes(np.swapaxes(fData, 1, 2), 2, 3), 3, 4)
-
-    xPos = np.zeros(Nx, dtype=ddtype)
-    yPos = np.zeros(Ny, dtype=ddtype)
-    zPos = np.zeros(Nz, dtype=ddtype)
-
-    xVel = np.zeros((Nx, Ny, Nz), dtype=ddtype)
-    yVel = np.zeros((Nx, Ny, Nz), dtype=ddtype)
-    zVel = np.zeros((Nx, Ny, Nz), dtype=ddtype)
-
-    prsr = np.zeros((Nx, Ny, Nz), dtype=ddtype)
-    tmpr = np.zeros((Nx, Ny, Nz), dtype=ddtype)
-
-    writex, writey, writez = True, True, True
-    for elz in range(nelz):
-        strz = elz * (polyOrder[2] - 1)
-        lenz = polyOrder[2] - 1
-        if elz == nelz - 1:
-            lenz = polyOrder[2]
-        endz = strz + lenz
-
-        writez = True
-        for ely in range(nely):
-            stry = ely * (polyOrder[1] - 1)
-            leny = polyOrder[1] - 1
-            if ely == nely - 1:
-                leny = polyOrder[1]
-            endy = stry + leny
-
-            writey = True
-            for elx in range(nelx):
-                elNum = nelx*nely*elz + nelx*ely + elx
-
-                strx = elx * (polyOrder[0] - 1)
-                lenx = polyOrder[0] - 1
-                if elx == nelx - 1:
-                    lenx = polyOrder[0]
-                endx = strx + lenx
-
-                if writex: xPos[strx:endx] = fData[elNum, :lenx, 0, 0, 0]
-                if writey: yPos[stry:endy] = fData[elNum, 0, :leny, 0, 1]
-                if writez: zPos[strz:endz] = fData[elNum, 0, 0, :lenz, 2]
-
-                xVel[strx:endx, stry:endy, strz:endz] = fData[elNum, :lenx, :leny, :lenz, 3]
-                yVel[strx:endx, stry:endy, strz:endz] = fData[elNum, :lenx, :leny, :lenz, 4]
-                zVel[strx:endx, stry:endy, strz:endz] = fData[elNum, :lenx, :leny, :lenz, 5]
-
-                prsr[strx:endx, stry:endy, strz:endz] = fData[elNum, :lenx, :leny, :lenz, 6]
-                tmpr[strx:endx, stry:endy, strz:endz] = fData[elNum, :lenx, :leny, :lenz, 7]
-
-                writey, writez = False, False
-
-            writex = False
-        writey = False
-
-    # output
-    return xPos, yPos, zPos, xVel, yVel, zVel, prsr, tmpr, solTime
+    f.close()
 
 
 if __name__ == "__main__":
@@ -204,31 +267,7 @@ if __name__ == "__main__":
 
     tracemalloc.start()
 
-    x, y, z, u, v, w, p, t, tVal = readnek(fName)
-
-    try:
-        outDest = sys.argv[3]
-        h5fName = outDest + ".h5"
-    except:
-        h5fName = fName + ".h5"
-
-    print("Writing output file: ", h5fName)
-
-    f = hp.File(h5fName, "w")
-
-    dset = f.create_dataset("X", data = x)
-    dset = f.create_dataset("Y", data = y)
-    dset = f.create_dataset("Z", data = z)
-    dset = f.create_dataset("U", data = u)
-    dset = f.create_dataset("V", data = v)
-    dset = f.create_dataset("W", data = w)
-    dset = f.create_dataset("P", data = p)
-    dset = f.create_dataset("T", data = t)
-
-    dset = f.create_dataset("Time", data = tVal)
-    dset = f.create_dataset("nelm", data = np.array([nelx, nely, nelz]))
-
-    f.close()
+    readnek(fName)
 
     cblocks, pblocks = tracemalloc.get_traced_memory()
     maxmem = pblocks/(1024*1024)
