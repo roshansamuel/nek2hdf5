@@ -58,32 +58,24 @@ def readnek(fname, dtype="float64"):
     fData = np.zeros((numElems, 8, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
 
     # read geometry
-    #pos = np.zeros((numElems, 3, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
     for iel in elmap:
-        #el = pos[iel - 1, ...]
         el = fData[iel - 1, 0:3, ...]
         for idim in range(3):
             el[idim, ...] = read_file_into_data()
 
     # read velocity
-    #vel = np.zeros((numElems, 3, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
     for iel in elmap:
-        #el = vel[iel - 1, ...]
         el = fData[iel - 1, 3:6, ...]
         for idim in range(3):
             el[idim, ...] = read_file_into_data()
 
     # read pressure
-    #prs = np.zeros((numElems, 1, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
     for iel in elmap:
-        #el = prs[iel - 1, ...]
         el = fData[iel - 1, 6, ...]
         el[...] = read_file_into_data()
 
     # read temperature
-    #tmp = np.zeros((numElems, 1, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
     for iel in elmap:
-        #el = tmp[iel - 1, ...]
         el = fData[iel - 1, 7, ...]
         el[...] = read_file_into_data()
 
@@ -91,20 +83,12 @@ def readnek(fname, dtype="float64"):
     infile.close()
 
     fData = np.swapaxes(fData, 2, 4)
-    #pos = np.swapaxes(pos, 2, 4)
-    #vel = np.swapaxes(vel, 2, 4)
-    #prs = np.swapaxes(prs, 2, 4)
-    #tmp = np.swapaxes(tmp, 2, 4)
+    fData = np.swapaxes(np.swapaxes(np.swapaxes(np.swapaxes(fData, 0, 1), 1, 2), 2, 3), 3, 4)
+    print(fData.flatten()[:20])
 
-    print(fData.shape)
-    #print(pos.shape)
-    #print(vel.shape)
-    #print(prs.shape)
-    #print(tmp.shape)
-    print(fData[-1, 3, -1, -1, :])
-    print(fData[-100, 3, 0, -1, :])
-    #print(vel[-1, 0, -1, -1, :])
-    #print(vel[-100, 0, 0, -1, :])
+    #print(fData.shape)
+    #print(fData[-1, 3, -1, -1, :])
+    #print(fData[-100, 3, 0, -1, :])
     exit()
 
     # output
