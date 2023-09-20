@@ -77,9 +77,9 @@ def readnek(fname):
     Ny = nely*(polyOrder[1] - 1) + 1
     Nz = nelz*(polyOrder[2] - 1) + 1
 
-    def read_elem_into_data():
+    def read_elem_into_data(ifile):
         """Read binary file into an array attribute of ``data.elem``"""
-        fi = infile.read(bytes_elem)
+        fi = ifile.read(bytes_elem)
         fi = np.frombuffer(fi, dtype=emode + rType, count=ptsPerElem)
 
         elem_shape = polyOrder[::-1]  # lz, ly, lx
@@ -87,14 +87,27 @@ def readnek(fname):
 
         return data_var
 
-    def read_file_into_data():
+    def read_file_into_data(ifile):
         fData = np.zeros((numElems, polyOrder[2], polyOrder[1], polyOrder[0]), dtype=ddtype)
 
         for iel in elmap:
             el = fData[iel - 1, ...]
-            el[...] = read_elem_into_data()
+            el[...] = read_elem_into_data(ifile)
 
         fData = np.swapaxes(fData, 1, 3)
+
+        return fData
+
+    def read_file_into_data_3c(ifile):
+        fData = np.zeros((numElems, 3, polyOrder[2], polyOrder[1], polyOrder[0]), dtype=ddtype)
+
+        for iel in elmap:
+            el = fData[iel - 1, ...]
+            for idim in range(3):
+                el[idim, ...] = read_elem_into_data(ifile)
+
+        fData = np.swapaxes(fData, 2, 4)
+        fData = np.swapaxes(np.swapaxes(np.swapaxes(fData, 1, 2), 2, 3), 3, 4)
 
         return fData
 
@@ -128,6 +141,36 @@ def readnek(fname):
 
         return oData
 
+    def transfer_data_3c(fData, cInd):
+        oData = np.zeros((Nx, Ny, Nz), dtype=ddtype)
+
+        for elz in range(nelz):
+            strz = elz * (polyOrder[2] - 1)
+            lenz = polyOrder[2] - 1
+            if elz == nelz - 1:
+                lenz = polyOrder[2]
+            endz = strz + lenz
+
+            for ely in range(nely):
+                stry = ely * (polyOrder[1] - 1)
+                leny = polyOrder[1] - 1
+                if ely == nely - 1:
+                    leny = polyOrder[1]
+                endy = stry + leny
+
+                for elx in range(nelx):
+                    elNum = nelx*nely*elz + nelx*ely + elx
+
+                    strx = elx * (polyOrder[0] - 1)
+                    lenx = polyOrder[0] - 1
+                    if elx == nelx - 1:
+                        lenx = polyOrder[0]
+                    endx = strx + lenx
+
+                    oData[strx:endx, stry:endy, strz:endz] = fData[elNum, :lenx, :leny, :lenz, cInd]
+
+        return oData
+
     def transfer_xgrid(fData):
         xPos = np.zeros(Nx, dtype=ddtype)
 
@@ -141,7 +184,7 @@ def readnek(fname):
                 lenx = polyOrder[0]
             endx = strx + lenx
 
-            xPos[strx:endx] = fData[elNum, :lenx, 0, 0]
+            xPos[strx:endx] = fData[elNum, :lenx, 0, 0, 0]
 
         return xPos
 
@@ -158,7 +201,7 @@ def readnek(fname):
                 leny = polyOrder[1]
             endy = stry + leny
 
-            yPos[stry:endy] = fData[elNum, 0, :leny, 0]
+            yPos[stry:endy] = fData[elNum, 0, :leny, 0, 1]
 
         return yPos
 
@@ -175,24 +218,21 @@ def readnek(fname):
                 lenz = polyOrder[2]
             endz = strz + lenz
 
-            zPos[strz:endz] = fData[elNum, 0, 0, :lenz]
+            zPos[strz:endz] = fData[elNum, 0, 0, :lenz, 2]
 
         return zPos
 
     # read geometry
     if varList[0] == 'X':
-        # Read X Data
-        fData = read_file_into_data()
+        # Read XYZ Data
+        fData = read_file_into_data_3c(infile)
+
         oData = transfer_xgrid(fData)
         dset = f.create_dataset("X", data = oData)
 
-        # Read Y Data
-        fData = read_file_into_data()
         oData = transfer_ygrid(fData)
         dset = f.create_dataset("Y", data = oData)
 
-        # Read Z Data
-        fData = read_file_into_data()
         oData = transfer_zgrid(fData)
         dset = f.create_dataset("Z", data = oData)
     else:
@@ -212,38 +252,42 @@ def readnek(fname):
             print("Grid file is incompatible :(\n")
             exit()
 
-        for iel in elmap:
-            el = fData[iel - 1, 0:3, ...]
-            for idim in range(3):
-                fi = g.read(bytes_elem)
-                fi = np.frombuffer(fi, dtype=emode + rType, count=ptsPerElem)
-                elem_shape = polyOrder[::-1]  # lz, ly, lx
-                el[idim, ...] = fi.reshape(elem_shape)
+        # Read XYZ Data
+        fData = read_file_into_data_3c(g)
+
+        oData = transfer_xgrid(fData)
+        dset = f.create_dataset("X", data = oData)
+
+        oData = transfer_ygrid(fData)
+        dset = f.create_dataset("Y", data = oData)
+
+        oData = transfer_zgrid(fData)
+        dset = f.create_dataset("Z", data = oData)
 
         g.close()
 
-    # Read Vx data
-    fData = read_file_into_data()
-    oData = transfer_data(fData)
+    # Read Vx-Vy-Vz data
+    fData = read_file_into_data_3c(infile)
+
+    # Transfer Vx data
+    oData = transfer_data_3c(fData, 0)
     dset = f.create_dataset("U", data = oData)
 
-    # Read Vy data
-    fData = read_file_into_data()
-    oData = transfer_data(fData)
+    # Transfer Vy data
+    oData = transfer_data_3c(fData, 1)
     dset = f.create_dataset("V", data = oData)
 
-    # Read Vz data
-    fData = read_file_into_data()
-    oData = transfer_data(fData)
+    # Transfer Vz data
+    oData = transfer_data_3c(fData, 2)
     dset = f.create_dataset("W", data = oData)
 
     # Read pressure
-    fData = read_file_into_data()
+    fData = read_file_into_data(infile)
     oData = transfer_data(fData)
     dset = f.create_dataset("P", data = oData)
 
     # Read temperature
-    fData = read_file_into_data()
+    fData = read_file_into_data(infile)
     oData = transfer_data(fData)
     dset = f.create_dataset("T", data = oData)
 
