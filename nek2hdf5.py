@@ -4,8 +4,10 @@ import h5py as hp
 import numpy as np
 
 nelx, nely, nelz = 100, 100, 64
+ddtype = "float64"
 
-def readnek(fname, dtype="float64"):
+def readnek(fname):
+    global ddtype
     global nelx, nely, nelz
 
     try:
@@ -28,8 +30,10 @@ def readnek(fname, dtype="float64"):
 
     if precSize == 4:
         rType = "f"
+        ddtype = "float32"
     elif precSize == 8:
         rType = "d"
+        ddtype = "float64"
 
     # identify endian encoding
     etagb = infile.read(4)
@@ -60,7 +64,7 @@ def readnek(fname, dtype="float64"):
 
         return data_var
 
-    fData = np.zeros((numElems, 8, polyOrder[2], polyOrder[1], polyOrder[0]), dtype="float64")
+    fData = np.zeros((numElems, 8, polyOrder[2], polyOrder[1], polyOrder[0]), dtype=ddtype)
 
     # read geometry
     if varList[0] == 'X':
@@ -130,16 +134,16 @@ def readnek(fname, dtype="float64"):
     # Bring all data to final axis
     fData = np.swapaxes(np.swapaxes(np.swapaxes(fData, 1, 2), 2, 3), 3, 4)
 
-    xPos = np.zeros(Nx, dtype="float64")
-    yPos = np.zeros(Ny, dtype="float64")
-    zPos = np.zeros(Nz, dtype="float64")
+    xPos = np.zeros(Nx, dtype=ddtype)
+    yPos = np.zeros(Ny, dtype=ddtype)
+    zPos = np.zeros(Nz, dtype=ddtype)
 
-    xVel = np.zeros((Nx, Ny, Nz), dtype="float64")
-    yVel = np.zeros((Nx, Ny, Nz), dtype="float64")
-    zVel = np.zeros((Nx, Ny, Nz), dtype="float64")
+    xVel = np.zeros((Nx, Ny, Nz), dtype=ddtype)
+    yVel = np.zeros((Nx, Ny, Nz), dtype=ddtype)
+    zVel = np.zeros((Nx, Ny, Nz), dtype=ddtype)
 
-    prsr = np.zeros((Nx, Ny, Nz), dtype="float64")
-    tmpr = np.zeros((Nx, Ny, Nz), dtype="float64")
+    prsr = np.zeros((Nx, Ny, Nz), dtype=ddtype)
+    tmpr = np.zeros((Nx, Ny, Nz), dtype=ddtype)
 
     writex, writey, writez = True, True, True
     for elz in range(nelz):
