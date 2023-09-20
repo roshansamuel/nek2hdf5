@@ -1,0 +1,8 @@
+*.gz
+*.h5
+*.swp
+*.swo
+*.out
+*.pyc
+*.png
+*0.f*
