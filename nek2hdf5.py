@@ -5,16 +5,22 @@ import struct
 import h5py as hp
 import numpy as np
 
+########## User-input data ###########
+
 # Optimize memory (sacrifice speed)
-writeDisk = True
+writeDisk = False
+
+# Set number of elements here
+nelx, nely, nelz = 100, 100, 64
 
 # Output memory trace (for debug only)
-traceMem = True
+traceMem = False
+
+####### End of user-input data #######
 
 if traceMem:
     import tracemalloc
 
-nelx, nely, nelz = 100, 100, 64
 ddtype = "float64"
 
 def readnek(fname):
