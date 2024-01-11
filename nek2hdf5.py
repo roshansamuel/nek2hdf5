@@ -3,6 +3,12 @@ import struct
 import h5py as hp
 import numpy as np
 
+# For debug
+traceMem = True
+
+if traceMem:
+    import tracemalloc
+
 nelx, nely, nelz = 100, 100, 64
 ddtype = "float64"
 
@@ -75,7 +81,6 @@ def readnek(fname):
 
     # Function to read data from one element
     def read_elem_into_data(ifile):
-        """Read binary file into an array attribute of ``data.elem``"""
         fi = ifile.read(bytes_elem)
         fi = np.frombuffer(fi, dtype=emode + rType, count=ptsPerElem)
 
@@ -138,37 +143,6 @@ def readnek(fname):
                     endx = strx + lenx
 
                     oData[strx:endx, stry:endy, strz:endz] = fData[elNum, :lenx, :leny, :lenz]
-
-        return oData
-
-    # Function to transfer one component of a vector variable to 3D array
-    def transfer_data_3c(fData, cInd):
-        oData = np.zeros((Nx, Ny, Nz), dtype=ddtype)
-
-        for elz in range(nelz):
-            strz = elz * (polyOrder[2] - 1)
-            lenz = polyOrder[2] - 1
-            if elz == nelz - 1:
-                lenz = polyOrder[2]
-            endz = strz + lenz
-
-            for ely in range(nely):
-                stry = ely * (polyOrder[1] - 1)
-                leny = polyOrder[1] - 1
-                if ely == nely - 1:
-                    leny = polyOrder[1]
-                endy = stry + leny
-
-                for elx in range(nelx):
-                    elNum = nelx*nely*elz + nelx*ely + elx
-
-                    strx = elx * (polyOrder[0] - 1)
-                    lenx = polyOrder[0] - 1
-                    if elx == nelx - 1:
-                        lenx = polyOrder[0]
-                    endx = strx + lenx
-
-                    oData[strx:endx, stry:endy, strz:endz] = fData[elNum, :lenx, :leny, :lenz, cInd]
 
         return oData
 
@@ -276,16 +250,24 @@ def readnek(fname):
     print("Processing velocity data")
     fData = read_file_into_data_3c(infile)
 
+    # Temporarily write data to disk to reduce memory usage
+    np.save("temp_vx", fData[..., 0])
+    np.save("temp_vy", fData[..., 1])
+    np.save("temp_vz", fData[..., 2])
+
     # Transfer Vx data
-    oData = transfer_data_3c(fData, 0)
+    fData = np.load("temp_vx.npy")
+    oData = transfer_data(fData)
     dset = f.create_dataset("U", data = oData)
 
     # Transfer Vy data
-    oData = transfer_data_3c(fData, 1)
+    fData = np.load("temp_vy.npy")
+    oData = transfer_data(fData)
     dset = f.create_dataset("V", data = oData)
 
     # Transfer Vz data
-    oData = transfer_data_3c(fData, 2)
+    fData = np.load("temp_vz.npy")
+    oData = transfer_data(fData)
     dset = f.create_dataset("W", data = oData)
 
     # Read pressure
@@ -320,5 +302,14 @@ if __name__ == "__main__":
         print("Could not read file :(\n")
         exit()
 
+    if traceMem:
+        tracemalloc.start()
+
     readnek(fName)
+
+    if traceMem:
+        cblocks, pblocks = tracemalloc.get_traced_memory()
+        maxmem = pblocks/(1024*1024)
+        print("Maximum memory used is: ", np.round(maxmem, 2), " MB")
+        tracemalloc.stop()
 

@@ -5,4 +5,5 @@
 *.out
 *.pyc
 *.png
+*.npy
 *0.f*
