@@ -6,10 +6,10 @@ import h5py as hp
 import numpy as np
 
 # Optimize memory (sacrifice speed)
-writeDisk = False
+writeDisk = True
 
 # Output memory trace (for debug only)
-traceMem = False
+traceMem = True
 
 if traceMem:
     import tracemalloc
@@ -121,24 +121,52 @@ def readnek(fname):
 
     # Function to read one vector variable from file
     def read_file_into_data_3c(ifile):
-        fData = np.zeros((numElems, 3, polyOrder[2], polyOrder[1], polyOrder[0]), dtype=ddtype)
-
-        for iel in elmap:
-            el = fData[iel - 1, ...]
-            for idim in range(3):
-                el[idim, ...] = read_elem_into_data(ifile)
-
-        # Get X and Z indices in correct places first
-        fData = np.swapaxes(fData, 2, 4)
         if writeDisk:
-            # Separate out the components by bringing the components index first
-            fData = np.swapaxes(fData, 0, 1)
+            dataOffset = 3 * numElems * bytes_elem
+            fData = np.zeros((numElems, polyOrder[2], polyOrder[1], polyOrder[0]), dtype=ddtype)
+            tmpMat = np.zeros((3, polyOrder[2], polyOrder[1], polyOrder[0]))
 
-            # Write the 3 components into temp arrays
-            np.save(fname + "_temp_x", fData[0, ...])
-            np.save(fname + "_temp_y", fData[1, ...])
-            np.save(fname + "_temp_z", fData[2, ...])
+            # Read and write X component
+            for iel in elmap:
+                for idim in range(3):
+                    tmpMat[idim, ...] = read_elem_into_data(ifile)
+                fData[iel - 1, ...] = tmpMat[0, ...]
+
+            # Get X and Z indices in correct places
+            fData = np.swapaxes(fData, 1, 3)
+            np.save(fname + "_temp_x", fData)
+
+            # Read and write Y component
+            ifile.seek(-dataOffset, 1)
+            for iel in elmap:
+                for idim in range(3):
+                    tmpMat[idim, ...] = read_elem_into_data(ifile)
+                fData[iel - 1, ...] = tmpMat[1, ...]
+
+            # Get X and Z indices in correct places
+            fData = np.swapaxes(fData, 1, 3)
+            np.save(fname + "_temp_y", fData)
+
+            # Read and write Z component
+            ifile.seek(-dataOffset, 1)
+            for iel in elmap:
+                for idim in range(3):
+                    tmpMat[idim, ...] = read_elem_into_data(ifile)
+                fData[iel - 1, ...] = tmpMat[2, ...]
+
+            # Get X and Z indices in correct places
+            fData = np.swapaxes(fData, 1, 3)
+            np.save(fname + "_temp_z", fData)
         else:
+            fData = np.zeros((numElems, 3, polyOrder[2], polyOrder[1], polyOrder[0]), dtype=ddtype)
+
+            for iel in elmap:
+                el = fData[iel - 1, ...]
+                for idim in range(3):
+                    el[idim, ...] = read_elem_into_data(ifile)
+
+            # Get X and Z indices in correct places first
+            fData = np.swapaxes(fData, 2, 4)
             fData = np.swapaxes(np.swapaxes(np.swapaxes(fData, 1, 2), 2, 3), 3, 4)
             return fData
 
