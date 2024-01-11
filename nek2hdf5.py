@@ -5,8 +5,11 @@ import struct
 import h5py as hp
 import numpy as np
 
-# For debug
-traceMem = True
+# Optimize memory (sacrifice speed)
+writeDisk = False
+
+# Output memory trace (for debug only)
+traceMem = False
 
 if traceMem:
     import tracemalloc
@@ -79,8 +82,10 @@ def readnek(fname):
     f = hp.File(h5fName, "w")
     dset = f.create_dataset("Time", data = solTime)
     dset = f.create_dataset("nelm", data = np.array([nelx, nely, nelz]))
-    f.close()
+    if writeDisk:
+        f.close()
 
+    # This function used only when writeDisk is enabled
     def addDataset(dName, dSet):
         f = hp.File(h5fName, "a")
         dset = f.create_dataset(dName, data = dSet)
@@ -125,14 +130,17 @@ def readnek(fname):
 
         # Get X and Z indices in correct places first
         fData = np.swapaxes(fData, 2, 4)
+        if writeDisk:
+            # Separate out the components by bringing the components index first
+            fData = np.swapaxes(fData, 0, 1)
 
-        # Separate out the components by bringing the components index first
-        fData = np.swapaxes(fData, 0, 1)
-
-        # Write the 3 components into temp arrays
-        np.save(fname + "_temp_x", fData[0, ...])
-        np.save(fname + "_temp_y", fData[1, ...])
-        np.save(fname + "_temp_z", fData[2, ...])
+            # Write the 3 components into temp arrays
+            np.save(fname + "_temp_x", fData[0, ...])
+            np.save(fname + "_temp_y", fData[1, ...])
+            np.save(fname + "_temp_z", fData[2, ...])
+        else:
+            fData = np.swapaxes(np.swapaxes(np.swapaxes(fData, 1, 2), 2, 3), 3, 4)
+            return fData
 
     # Function to transfer scalar variable to 3D array
     def transfer_data(fData):
@@ -166,13 +174,14 @@ def readnek(fname):
         return oData
 
     # Function to transfer one component of a vector variable to 3D array
-    def transfer_data_3c(cInd):
-        if cInd == 0:
-            fData = np.load(fname + "_temp_x.npy")
-        elif cInd == 1:
-            fData = np.load(fname + "_temp_y.npy")
-        elif cInd == 2:
-            fData = np.load(fname + "_temp_z.npy")
+    def transfer_data_3c(cInd, fData=None):
+        if writeDisk:
+            if cInd == 0:
+                fData = np.load(fname + "_temp_x.npy")
+            elif cInd == 1:
+                fData = np.load(fname + "_temp_y.npy")
+            elif cInd == 2:
+                fData = np.load(fname + "_temp_z.npy")
 
         oData = np.zeros((Nx, Ny, Nz), dtype=ddtype)
 
@@ -199,20 +208,25 @@ def readnek(fname):
                         lenx = polyOrder[0]
                     endx = strx + lenx
 
-                    oData[strx:endx, stry:endy, strz:endz] = fData[elNum, :lenx, :leny, :lenz]
+                    if writeDisk:
+                        oData[strx:endx, stry:endy, strz:endz] = fData[elNum, :lenx, :leny, :lenz]
+                    else:
+                        oData[strx:endx, stry:endy, strz:endz] = fData[elNum, :lenx, :leny, :lenz, cInd]
 
-        if cInd == 0:
-            os.remove(fname + "_temp_x.npy")
-        elif cInd == 1:
-            os.remove(fname + "_temp_y.npy")
-        elif cInd == 2:
-            os.remove(fname + "_temp_z.npy")
+        if writeDisk:
+            if cInd == 0:
+                os.remove(fname + "_temp_x.npy")
+            elif cInd == 1:
+                os.remove(fname + "_temp_y.npy")
+            elif cInd == 2:
+                os.remove(fname + "_temp_z.npy")
 
         return oData
 
     # Function to transfer x-grid to 1D array
-    def transfer_xgrid():
-        fData = np.load(fname + "_temp_x.npy")
+    def transfer_xgrid(fData=None):
+        if writeDisk:
+            fData = np.load(fname + "_temp_x.npy")
         xPos = np.zeros(Nx, dtype=ddtype)
 
         ely, elz = 1, 1
@@ -225,15 +239,20 @@ def readnek(fname):
                 lenx = polyOrder[0]
             endx = strx + lenx
 
-            xPos[strx:endx] = fData[elNum, :lenx, 0, 0]
+            if writeDisk:
+                xPos[strx:endx] = fData[elNum, :lenx, 0, 0]
+            else:
+                xPos[strx:endx] = fData[elNum, :lenx, 0, 0, 0]
 
-        os.remove(fname + "_temp_x.npy")
+        if writeDisk:
+            os.remove(fname + "_temp_x.npy")
 
         return xPos
 
     # Function to transfer y-grid to 1D array
-    def transfer_ygrid():
-        fData = np.load(fname + "_temp_y.npy")
+    def transfer_ygrid(fData=None):
+        if writeDisk:
+            fData = np.load(fname + "_temp_y.npy")
         yPos = np.zeros(Ny, dtype=ddtype)
 
         elx, elz = 1, 1
@@ -246,15 +265,20 @@ def readnek(fname):
                 leny = polyOrder[1]
             endy = stry + leny
 
-            yPos[stry:endy] = fData[elNum, 0, :leny, 0]
+            if writeDisk:
+                yPos[stry:endy] = fData[elNum, 0, :leny, 0]
+            else:
+                yPos[stry:endy] = fData[elNum, 0, :leny, 0, 1]
 
-        os.remove(fname + "_temp_y.npy")
+        if writeDisk:
+            os.remove(fname + "_temp_y.npy")
 
         return yPos
 
     # Function to transfer z-grid to 1D array
-    def transfer_zgrid():
-        fData = np.load(fname + "_temp_z.npy")
+    def transfer_zgrid(fData=None):
+        if writeDisk:
+            fData = np.load(fname + "_temp_z.npy")
         zPos = np.zeros(Nz, dtype=ddtype)
 
         elx, ely = 1, 1
@@ -267,9 +291,13 @@ def readnek(fname):
                 lenz = polyOrder[2]
             endz = strz + lenz
 
-            zPos[strz:endz] = fData[elNum, 0, 0, :lenz]
+            if writeDisk:
+                zPos[strz:endz] = fData[elNum, 0, 0, :lenz]
+            else:
+                zPos[strz:endz] = fData[elNum, 0, 0, :lenz, 2]
 
-        os.remove(fname + "_temp_z.npy")
+        if writeDisk:
+            os.remove(fname + "_temp_z.npy")
 
         return zPos
 
@@ -278,16 +306,28 @@ def readnek(fname):
 
     if varList[0] == 'X':
         # Read XYZ Data
-        read_file_into_data_3c(infile)
+        if writeDisk:
+            read_file_into_data_3c(infile)
 
-        oData = transfer_xgrid()
-        addDataset("X", oData)
+            oData = transfer_xgrid()
+            addDataset("X", oData)
 
-        oData = transfer_ygrid()
-        addDataset("Y", oData)
+            oData = transfer_ygrid()
+            addDataset("Y", oData)
 
-        oData = transfer_zgrid()
-        addDataset("Z", oData)
+            oData = transfer_zgrid()
+            addDataset("Z", oData)
+        else:
+            fData = read_file_into_data_3c(infile)
+
+            oData = transfer_xgrid(fData)
+            dset = f.create_dataset("X", data = oData)
+
+            oData = transfer_ygrid(fData)
+            dset = f.create_dataset("Y", data = oData)
+
+            oData = transfer_zgrid(fData)
+            dset = f.create_dataset("Z", data = oData)
     else:
         # Read grid data from file
         try:
@@ -306,67 +346,104 @@ def readnek(fname):
             exit()
 
         # Read XYZ Data
-        read_file_into_data_3c(g)
+        if writeDisk:
+            read_file_into_data_3c(g)
 
-        oData = transfer_xgrid()
-        addDataset("X", oData)
+            oData = transfer_xgrid()
+            addDataset("X", oData)
 
-        oData = transfer_ygrid()
-        addDataset("Y", oData)
+            oData = transfer_ygrid()
+            addDataset("Y", oData)
 
-        oData = transfer_zgrid()
-        addDataset("Z", oData)
+            oData = transfer_zgrid()
+            addDataset("Z", oData)
+        else:
+            fData = read_file_into_data_3c(g)
+
+            oData = transfer_xgrid(fData)
+            dset = f.create_dataset("X", data = oData)
+
+            oData = transfer_ygrid(fData)
+            dset = f.create_dataset("Y", data = oData)
+
+            oData = transfer_zgrid(fData)
+            dset = f.create_dataset("Z", data = oData)
 
         g.close()
 
-    # Free up memory
-    del oData
-    gc.collect()
+    if writeDisk:
+        # Free up memory
+        del oData
+        gc.collect()
 
     # Read Vx-Vy-Vz data
     print("Processing velocity data")
-    read_file_into_data_3c(infile)
+    if writeDisk:
+        read_file_into_data_3c(infile)
 
-    # Transfer Vx data
-    oData = transfer_data_3c(0)
-    addDataset("U", oData)
-    del oData
-    gc.collect()
+        # Transfer Vx data
+        oData = transfer_data_3c(0)
+        addDataset("U", oData)
+        del oData
+        gc.collect()
 
-    # Transfer Vy data
-    oData = transfer_data_3c(1)
-    addDataset("V", oData)
-    del oData
-    gc.collect()
+        # Transfer Vy data
+        oData = transfer_data_3c(1)
+        addDataset("V", oData)
+        del oData
+        gc.collect()
 
-    # Transfer Vz data
-    oData = transfer_data_3c(2)
-    addDataset("W", oData)
-    del oData
-    gc.collect()
+        # Transfer Vz data
+        oData = transfer_data_3c(2)
+        addDataset("W", oData)
+        del oData
+        gc.collect()
+    else:
+        fData = read_file_into_data_3c(infile)
+
+        # Transfer Vx data
+        oData = transfer_data_3c(0, fData)
+        dset = f.create_dataset("U", data = oData)
+
+        # Transfer Vy data
+        oData = transfer_data_3c(1, fData)
+        dset = f.create_dataset("V", data = oData)
+
+        # Transfer Vz data
+        oData = transfer_data_3c(2, fData)
+        dset = f.create_dataset("W", data = oData)
 
     # Read pressure
     print("Processing pressure data")
     fData = read_file_into_data(infile)
     oData = transfer_data(fData)
-    addDataset("P", oData)
+    if writeDisk:
+        addDataset("P", oData)
 
-    del fData
-    del oData
-    gc.collect()
+        del fData
+        del oData
+        gc.collect()
+    else:
+        dset = f.create_dataset("P", data = oData)
 
     # Read temperature
     print("Processing temperature data")
     fData = read_file_into_data(infile)
     oData = transfer_data(fData)
-    addDataset("T", oData)
+    if writeDisk:
+        addDataset("T", oData)
 
-    del fData
-    del oData
-    gc.collect()
+        del fData
+        del oData
+        gc.collect()
+    else:
+        dset = f.create_dataset("T", data = oData)
 
     # close file
     infile.close()
+
+    if not writeDisk:
+        f.close()
 
     print("Finished writing output file: ", h5fName)
 
